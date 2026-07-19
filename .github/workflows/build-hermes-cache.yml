@@ -23,7 +23,7 @@ jobs:
         run: |
           cd hermes-agent
           uv python install 3.11
-          uv sync --locked --all-extras --python 3.11
+          uv sync --locked --python 3.11
 
       - name: Pack the offline cache
         run: |
