@@ -1,1 +1,39 @@
+name: Build Hermes offline cache
 
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-cache:
+    runs-on: macos-14
+
+    steps:
+      - name: Get the exact Hermes version
+        run: |
+          git clone https://github.com/NousResearch/hermes-agent.git hermes-agent
+          cd hermes-agent
+          git checkout dc7a20cb0e28e37e5d27efa1bd75f68b5873dc07
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Download Hermes Python dependencies
+        run: |
+          cd hermes-agent
+          uv python install 3.11
+          uv sync --locked --all-extras --python 3.11
+
+      - name: Pack the offline cache
+        run: |
+          CACHE_DIR="$(uv cache dir)"
+          tar -czf hermes-uv-cache-macos-arm64.tar.gz -C "$CACHE_DIR" .
+
+      - name: Save cache for download
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-uv-cache-macos-arm64
+          path: hermes-uv-cache-macos-arm64.tar.gz
+          retention-days: 7
