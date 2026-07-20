@@ -1,0 +1,68 @@
+name: Build Hermes Desktop for offline Mac
+
+on: [push, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  build-desktop:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Get the exact Hermes version
+        run: |
+          git clone https://github.com/NousResearch/hermes-agent.git hermes-agent
+          cd hermes-agent
+          git checkout dc7a20cb0e28e37e5d27efa1bd75f68b5873dc07
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install desktop workspace dependencies
+        run: |
+          cd hermes-agent
+          npm ci
+
+      - name: Build the Apple Silicon desktop app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          cd hermes-agent/apps/desktop
+          npm run pack
+
+      - name: Verify, sign, and package Hermes.app
+        run: |
+          APP=""
+          for CANDIDATE in             "$GITHUB_WORKSPACE/hermes-agent/apps/desktop/release/mac-arm64/Hermes.app"             "$GITHUB_WORKSPACE/hermes-agent/apps/desktop/release/mac/Hermes.app"
+          do
+            if [ -d "$CANDIDATE" ]; then
+              APP="$CANDIDATE"
+              break
+            fi
+          done
+
+          if [ -z "$APP" ]; then
+            echo "Hermes.app was not found in the desktop release directory."
+            find "$GITHUB_WORKSPACE/hermes-agent/apps/desktop/release" -maxdepth 3 -print || true
+            exit 1
+          fi
+
+          test -x "$APP/Contents/MacOS/Hermes"
+          xattr -cr "$APP"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
+
+          mkdir -p "$GITHUB_WORKSPACE/offline-desktop"
+          ditto -c -k --sequesterRsrc --keepParent             "$APP"             "$GITHUB_WORKSPACE/offline-desktop/Hermes-macos-arm64.zip"
+          unzip -t "$GITHUB_WORKSPACE/offline-desktop/Hermes-macos-arm64.zip"
+
+      - name: Save the finished desktop app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hermes-macos-arm64
+          path: offline-desktop/Hermes-macos-arm64.zip
+          retention-days: 7
